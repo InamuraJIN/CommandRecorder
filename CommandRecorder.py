@@ -28,7 +28,7 @@ from . import DefineCommon as Common
 # 使用クラスの宣言
 # -------------------------------------------------------------------------------------------
 class CR_OT_String(PropertyGroup):  # リストデータを保持するためのプロパティグループを作成
-    Command: StringProperty(default="")  # CR_Var.name
+    Command: StringProperty(default="")  # CommandRecorder_Variables.name
 
 
 class CR_List_Selector(UIList):
@@ -55,14 +55,21 @@ class CR_List_Instance(UIList):
 # -------------------------------------------------------------------------------------------
 
 
-def CR_(Data, Num):
+def get_list_command(index) -> CollectionProperty(type=CR_OT_String):
     scene = bpy.context.scene
-    if Data == "List":
-        return eval("scene.CR_Var.List_Command_{0:03d}".format(Num))
-    elif Data == "Index":
-        return eval("scene.CR_Var.List_Index_{0:03d}".format(Num))
-    else:
-        exec("scene.CR_Var.List_Index_{0:03d} = {1}".format(Num, Data))
+    return eval("scene.CommandRecorder_Variables.List_Command_{0:03d}".format(index))
+
+
+def get_list_index(index: int) -> int:
+    scene = bpy.context.scene
+    return eval("scene.CommandRecorder_Variables.List_Index_{0:03d}".format(index))
+
+
+def set_list_index(index, value):
+    scene = bpy.context.scene
+    exec(
+        "scene.CommandRecorder_Variables.List_Index_{0:03d} = {1}".format(index, value)
+    )
 
 
 def get_recent_operations(get_type: str = "") -> List[str]:  # 操作履歴にアクセス
@@ -72,21 +79,28 @@ def get_recent_operations(get_type: str = "") -> List[str]:  # 操作履歴に�
         for t in bpy.data.texts
         if t.name.startswith("Recent Reports")
     ]
+
     # make a report
     win = bpy.context.window_manager.windows[0]
     area = win.screen.areas[0]
     area_type = area.type
     area.type = "INFO"
+
     override = bpy.context.copy()
     override["window"] = win
     override["screen"] = win.screen
     override["area"] = win.screen.areas[0]
+
     bpy.ops.info.select_all(override, action="SELECT")
     bpy.ops.info.report_copy(override)
+
     area.type = area_type
+
     clipboard = bpy.context.window_manager.clipboard
+
     bpy.data.texts.new("Recent Reports")
     bpy.data.texts["Recent Reports"].write(clipboard)
+
     # print the report
     return bpy.data.texts["Recent Reports"].lines  # 操作履歴全ての行
 
@@ -95,13 +109,13 @@ def record(index, mode):
     recent_operations = get_recent_operations()
     if mode == "Start":
         CR_PT_List.Bool_Record = 1
-        CR_Prop.Temp_Num = len(recent_operations)
+        CommandRecorder_Variables.Temp_Num = len(recent_operations)
     else:
         CR_PT_List.Bool_Record = 0
-        for i in range(CR_Prop.Temp_Num, len(recent_operations)):
+        for i in range(CommandRecorder_Variables.Temp_Num, len(recent_operations)):
             TempText = recent_operations[i - 1].body
             if TempText.count("bpy"):
-                Item = CR_("List", index).add()
+                Item = get_list_command(index).add()
                 Item.name = TempText[TempText.find("bpy") :]
 
 
@@ -124,7 +138,7 @@ def temp_save(index):  # write new command to temp.json file
     with open(temp_json_path, "r+", encoding="utf8") as tempfile:
         data = json.load(tempfile)
         data.update({str(index): []})
-        data["0"].append(CR_("List", 0)[index - 1]["name"])
+        data["0"].append(get_list_command(0)[index - 1]["name"])
         tempfile.seek(0)
         json.dump(data, tempfile)
 
@@ -134,8 +148,8 @@ def temp_update():  # update all commands in temp.json file
         tempfile.truncate(0)
         tempfile.seek(0)
         data = {}
-        for cmd in range(len(CR_("List", 0)) + 1):
-            data.update({str(cmd): [i.name for i in CR_("List", cmd)]})
+        for index in range(len(get_list_command(0)) + 1):
+            data.update({str(index): [i.name for i in get_list_command(index)]})
         json.dump(data, tempfile)
 
 
@@ -143,7 +157,7 @@ def temp_update_command(index):  # update one command in temp.json file
     print(temp_json_path)
     with open(temp_json_path, "r+", encoding="utf8") as tempfile:
         data = json.load(tempfile)
-        data[str(index)] = [i.name for i in CR_("List", int(index))]
+        data[str(index)] = [i.name for i in get_list_command(int(index))]
         tempfile.truncate(0)
         tempfile.seek(0)
         json.dump(data, tempfile)
@@ -151,16 +165,16 @@ def temp_update_command(index):  # update one command in temp.json file
 
 @persistent
 def temp_load(dummy):  # load commands after undo
-    if bpy.context.scene.CR_Var.IgnoreUndo:
+    if bpy.context.scene.CommandRecorder_Variables.IgnoreUndo:
         with open(temp_json_path, "r", encoding="utf8") as tempfile:
             data = json.load(tempfile)
-        command = CR_("List", 0)
+        command = get_list_command(0)
         command.clear()
         keys = list(data.keys())
         for i in range(1, len(data)):
             Item = command.add()
             Item.name = data["0"][i - 1]
-            record = CR_("List", i)
+            record = get_list_command(i)
             record.clear()
             for j in range(len(data[keys[i]])):
                 Item = record.add()
@@ -174,8 +188,8 @@ bpy.app.handlers.undo_post.append(
 
 def add(index):
     recent_operations = get_recent_operations("Reports_All")
-    if index or len(CR_("List", 0)) < 250:
-        item = CR_("List", index).add()
+    if index or len(get_list_command(0)) < 250:
+        item = get_list_command(index).add()
         if index:
             if recent_operations[-2].body.count("bpy"):
                 Name_Temp = recent_operations[-2].body
@@ -184,80 +198,86 @@ def add(index):
                 Name_Temp = recent_operations[-3].body
                 item.name = Name_Temp[Name_Temp.find("bpy") :]
         else:
-            item.name = "Untitled_{0:03d}".format(len(CR_("List", index)))
-        CR_(len(CR_("List", index)) - 1, index)
+            item.name = "Untitled_{0:03d}".format(len(get_list_command(index)))
+        set_list_index(len(get_list_command(index)) - 1, index)
 
 
 def remove(index):
     if not index:
-        for Num_Loop in range(CR_("Index", 0) + 1, len(CR_("List", 0)) + 1):
-            CR_("List", Num_Loop).clear()
-            for Num_Command in range(len(CR_("List", Num_Loop + 1))):
-                Item = CR_("List", Num_Loop).add()
-                Item.name = CR_("List", Num_Loop + 1)[Num_Command].name
-            CR_(CR_("Index", Num_Loop + 1), Num_Loop)
-    if len(CR_("List", index)):
-        CR_("List", index).remove(CR_("Index", index))
-        if len(CR_("List", index)) - 1 < CR_("Index", index):
-            CR_(len(CR_("List", index)) - 1, index)
-            if CR_("Index", index) < 0:
-                CR_(0, index)
+        for Num_Loop in range(get_list_index(0) + 1, len(get_list_command(0)) + 1):
+            get_list_command(Num_Loop).clear()
+            for Num_Command in range(len(get_list_command(Num_Loop + 1))):
+                Item = get_list_command(Num_Loop).add()
+                Item.name = get_list_command(Num_Loop + 1)[Num_Command].name
+            set_list_index(get_list_index(Num_Loop + 1), Num_Loop)
+    if len(get_list_command(index)):
+        get_list_command(index).remove(get_list_index(index))
+        if len(get_list_command(index)) - 1 < get_list_index(index):
+            set_list_index(len(get_list_command(index)) - 1, index)
+            if get_list_index(index) < 0:
+                set_list_index(0, index)
 
 
 def move(index, mode):
-    index1 = CR_("Index", index)
+    index1 = get_list_index(index)
     if mode == "Up":
-        index2 = CR_("Index", index) - 1
+        index2 = get_list_index(index) - 1
     else:
-        index2 = CR_("Index", index) + 1
-    LengthTemp = len(CR_("List", index))
+        index2 = get_list_index(index) + 1
+    LengthTemp = len(get_list_command(index))
     if (2 <= LengthTemp) and (0 <= index1 < LengthTemp) and (0 <= index2 < LengthTemp):
-        CR_("List", index).move(index1, index2)
-        CR_(index2, index)
+        get_list_command(index).move(index1, index2)
+        set_list_index(index2, index)
 
         # コマンドの入れ替え処理
         if not index:
             index1 += 1
             index2 += 1
-            CR_("List", 254).clear()
+            get_list_command(254).clear()
             # 254にIndex2を逃がす
-            for Num_Command in CR_("List", index2):
-                Item = CR_("List", 254).add()
+            for Num_Command in get_list_command(index2):
+                Item = get_list_command(254).add()
                 Item.name = Num_Command.name
-            CR_(CR_("Index", index2), 254)
-            CR_("List", index2).clear()
+            set_list_index(get_list_index(index2), 254)
+            get_list_command(index2).clear()
             # Index1からIndex2へ
-            for Num_Command in CR_("List", index1):
-                Item = CR_("List", index2).add()
+            for Num_Command in get_list_command(index1):
+                Item = get_list_command(index2).add()
                 Item.name = Num_Command.name
-            CR_(CR_("Index", index1), index2)
-            CR_("List", index1).clear()
+            set_list_index(get_list_index(index1), index2)
+            get_list_command(index1).clear()
             # 254からIndex1へ
-            for Num_Command in CR_("List", 254):
-                Item = CR_("List", index1).add()
+            for Num_Command in get_list_command(254):
+                Item = get_list_command(index1).add()
                 Item.name = Num_Command.name
-            CR_(CR_("Index", 254), index1)
-            CR_("List", 254).clear()
+            set_list_index(get_list_index(254), index1)
+            get_list_command(254).clear()
 
 
 def select_command(mode: str):
-    current_index = CR_("Index", 0)
-    list_length = len(CR_("List", 0)) - 1
+    current_index = get_list_index(0)
+    list_length = len(get_list_command(0)) - 1
     if mode == "Up":
         if current_index == 0:
-            bpy.context.scene.CR_Var.List_Index_000 = list_length
+            bpy.context.scene.CommandRecorder_Variables.List_Index_000 = list_length
         else:
-            bpy.context.scene.CR_Var.List_Index_000 = current_index - 1
+            bpy.context.scene.CommandRecorder_Variables.List_Index_000 = (
+                current_index - 1
+            )
     else:
         if current_index == list_length:
-            bpy.context.scene.CR_Var.List_Index_000 = 0
+            bpy.context.scene.CommandRecorder_Variables.List_Index_000 = 0
         else:
-            bpy.context.scene.CR_Var.List_Index_000 = current_index + 1
+            bpy.context.scene.CommandRecorder_Variables.List_Index_000 = (
+                current_index + 1
+            )
 
 
 def play(Commands):
     scene = bpy.context.scene
-    if scene.CR_Var.Target_Switch == "Once":  # Target Switch is always 'Once'
+    if (
+        scene.CommandRecorder_Variables.Target_Switch == "Once"
+    ):  # Target Switch is always 'Once'
         for Command in Commands:
             if type(Command) == str:
                 exec(Command)
@@ -331,7 +351,7 @@ def play(Commands):
 
 
 def clear(index):
-    CR_("List", index).clear()
+    get_list_command(index).clear()
 
 
 class CR_OT_Selector(Operator):
@@ -345,22 +365,22 @@ class CR_OT_Selector(Operator):
         # 追加
         if self.mode == "Add":
             add(0)
-            if scene.CR_Var.IgnoreUndo:
-                temp_save(CR_("Index", 0) + 1)
+            if scene.CommandRecorder_Variables.IgnoreUndo:
+                temp_save(get_list_index(0) + 1)
         # 削除
         elif self.mode == "Remove":
             remove(0)
-            if scene.CR_Var.IgnoreUndo:
+            if scene.CommandRecorder_Variables.IgnoreUndo:
                 temp_update()
         # 上へ
         elif self.mode == "Up":
             move(0, "Up")
-            if scene.CR_Var.IgnoreUndo:
+            if scene.CommandRecorder_Variables.IgnoreUndo:
                 temp_update()
         # 下へ
         elif self.mode == "Down":
             move(0, "Down")
-            if scene.CR_Var.IgnoreUndo:
+            if scene.CommandRecorder_Variables.IgnoreUndo:
                 temp_update()
         bpy.context.area.tag_redraw()
         return {"FINISHED"}  # UI系の関数の最後には必ず付ける
@@ -393,7 +413,7 @@ class Command_OT_Play(Operator):
 
     def execute(self, context):
         # コマンドを実行
-        play(CR_("List", CR_("Index", 0) + 1))
+        play(get_list_command(get_list_index(0) + 1))
         return {"FINISHED"}  # UI系の関数の最後には必ず付ける
 
 
@@ -403,9 +423,9 @@ class Command_OT_Add(Operator):
     # bl_options = {'REGISTER', 'UNDO'}#アンドゥ履歴に登録
     def execute(self, context):
         # コマンドを実行
-        add(CR_("Index", 0) + 1)
-        if bpy.context.scene.CR_Var.IgnoreUndo:
-            temp_update_command(CR_("Index", 0) + 1)
+        add(get_list_index(0) + 1)
+        if bpy.context.scene.CommandRecorder_Variables.IgnoreUndo:
+            temp_update_command(get_list_index(0) + 1)
         bpy.context.area.tag_redraw()
         return {"FINISHED"}  # UI系の関数の最後には必ず付ける
 
@@ -420,37 +440,37 @@ class CR_OT_Command(Operator):
         scene = bpy.context.scene
         # 録画を開始
         if self.mode == "Record_Start":
-            record(CR_("Index", 0) + 1, "Start")
+            record(get_list_index(0) + 1, "Start")
         # 録画を終了
         elif self.mode == "Record_Stop":
-            record(CR_("Index", 0) + 1, "Stop")
-            if scene.CR_Var.IgnoreUndo:
-                temp_update_command(CR_("Index", 0) + 1)
+            record(get_list_index(0) + 1, "Stop")
+            if scene.CommandRecorder_Variables.IgnoreUndo:
+                temp_update_command(get_list_index(0) + 1)
         # 追加
         elif self.mode == "Add":
-            add(CR_("Index", 0) + 1)
-            if scene.CR_Var.IgnoreUndo:
-                temp_update_command(CR_("Index", 0) + 1)
+            add(get_list_index(0) + 1)
+            if scene.CommandRecorder_Variables.IgnoreUndo:
+                temp_update_command(get_list_index(0) + 1)
         # 削除
         elif self.mode == "Remove":
-            remove(CR_("Index", 0) + 1)
-            if scene.CR_Var.IgnoreUndo:
-                temp_update_command(CR_("Index", 0) + 1)
+            remove(get_list_index(0) + 1)
+            if scene.CommandRecorder_Variables.IgnoreUndo:
+                temp_update_command(get_list_index(0) + 1)
         # 上へ
         elif self.mode == "Up":
-            move(CR_("Index", 0) + 1, "Up")
-            if scene.CR_Var.IgnoreUndo:
-                temp_update_command(CR_("Index", 0) + 1)
+            move(get_list_index(0) + 1, "Up")
+            if scene.CommandRecorder_Variables.IgnoreUndo:
+                temp_update_command(get_list_index(0) + 1)
         # 下へ
         elif self.mode == "Down":
-            move(CR_("Index", 0) + 1, "Down")
-            if scene.CR_Var.IgnoreUndo:
-                temp_update_command(CR_("Index", 0) + 1)
+            move(get_list_index(0) + 1, "Down")
+            if scene.CommandRecorder_Variables.IgnoreUndo:
+                temp_update_command(get_list_index(0) + 1)
         # リストをクリア
         elif self.mode == "Clear":
-            clear(CR_("Index", 0) + 1)
-            if scene.CR_Var.IgnoreUndo:
-                temp_update_command(CR_("Index", 0) + 1)
+            clear(get_list_index(0) + 1)
+            if scene.CommandRecorder_Variables.IgnoreUndo:
+                temp_update_command(get_list_index(0) + 1)
 
         bpy.context.area.tag_redraw()
         return {"FINISHED"}  # UI系の関数の最後には必ず付ける
@@ -478,8 +498,8 @@ def strage_file():
 def save():
     scene = bpy.context.scene
     with open(strage_file(), "w") as file:
-        names = scene.CR_Var.Instance_Name
-        commands = scene.CR_Var.Instance_Command
+        names = scene.CommandRecorder_Variables.Instance_Name
+        commands = scene.CommandRecorder_Variables.Instance_Command
         for index in range(len(names)):
             file.write("CR_Name" + "\n" + names[index] + "\n")
             file.write("CR_Command" + "\n")
@@ -496,19 +516,19 @@ def load():
             lines.append(line.replace("\n", ""))
         file.close()  # ファイルを閉じる
 
-    append_command_flag = 0 # ???
+    append_command_flag = 0  # ???
     temp_commands = []
     count = 0
-    scene.CR_Var.Instance_Name.clear()
-    scene.CR_Var.Instance_Command.clear()
+    scene.CommandRecorder_Variables.Instance_Name.clear()
+    scene.CommandRecorder_Variables.Instance_Command.clear()
     for index in range(len(lines)):
         if lines[index] == "CR_Name":
-            scene.CR_Var.Instance_Name.append(lines[index + 1])
+            scene.CommandRecorder_Variables.Instance_Name.append(lines[index + 1])
         elif lines[index] == "CR_Command":
             append_command_flag = 1
         elif lines[index] == "CR_End":
             append_command_flag = 0
-            scene.CR_Var.Instance_Command.append(temp_commands)
+            scene.CommandRecorder_Variables.Instance_Command.append(temp_commands)
             temp_commands = []
             count += 1
         if append_command_flag > 0:
@@ -518,60 +538,79 @@ def load():
 
 
 def recorder_to_instance():
-    CR_Prop.Instance_Name.append(CR_("List", 0)[CR_("Index", 0)].name)
+    CommandRecorder_Variables.Instance_Name.append(
+        get_list_command(0)[get_list_index(0)].name
+    )
     Temp_Command = []
-    for Command in CR_("List", CR_("Index", 0) + 1):
+    for Command in get_list_command(get_list_index(0) + 1):
         Temp_Command.append(Command.name)
-    CR_Prop.Instance_Command.append(Temp_Command)
+    CommandRecorder_Variables.Instance_Command.append(Temp_Command)
 
 
 def instance_to_recorder():
     scene = bpy.context.scene
-    Item = CR_("List", 0).add()
-    Item.name = CR_Prop.Instance_Name[int(scene.CR_Var.Instance_Index)]
-    for Command in CR_Prop.Instance_Command[int(scene.CR_Var.Instance_Index)]:
-        Item = CR_("List", len(CR_("List", 0))).add()
+    Item = get_list_command(0).add()
+    Item.name = CommandRecorder_Variables.Instance_Name[
+        int(scene.CommandRecorder_Variables.Instance_Index)
+    ]
+    for Command in CommandRecorder_Variables.Instance_Command[
+        int(scene.CommandRecorder_Variables.Instance_Index)
+    ]:
+        Item = get_list_command(len(get_list_command(0))).add()
         Item.name = Command
-    CR_(len(CR_("List", 0)) - 1, 0)
+    set_list_index(len(get_list_command(0)) - 1, 0)
 
 
 def execute_instance(index):
-    play(CR_Prop.Instance_Command[index])
+    play(CommandRecorder_Variables.Instance_Command[index])
 
 
 def rename_instance():
     scene = bpy.context.scene
-    CR_Prop.Instance_Name[int(scene.CR_Var.Instance_Index)] = scene.CR_Var.Rename
+    CommandRecorder_Variables.Instance_Name[
+        int(scene.CommandRecorder_Variables.Instance_Index)
+    ] = scene.CommandRecorder_Variables.Rename
 
 
 def i_remove():
     scene = bpy.context.scene
-    if len(CR_Prop.Instance_Name):
-        Index = int(scene.CR_Var.Instance_Index)
-        CR_Prop.Instance_Name.pop(Index)
-        CR_Prop.Instance_Command.pop(Index)
-        if len(CR_Prop.Instance_Name) and len(CR_Prop.Instance_Name) - 1 < Index:
-            scene.CR_Var.Instance_Index = str(len(CR_Prop.Instance_Name) - 1)
+    if len(CommandRecorder_Variables.Instance_Name):
+        Index = int(scene.CommandRecorder_Variables.Instance_Index)
+        CommandRecorder_Variables.Instance_Name.pop(Index)
+        CommandRecorder_Variables.Instance_Command.pop(Index)
+        if (
+            len(CommandRecorder_Variables.Instance_Name)
+            and len(CommandRecorder_Variables.Instance_Name) - 1 < Index
+        ):
+            scene.CommandRecorder_Variables.Instance_Index = str(
+                len(CommandRecorder_Variables.Instance_Name) - 1
+            )
 
 
 def i_move(mode):
     scene = bpy.context.scene
-    index1 = int(scene.CR_Var.Instance_Index)
+    index1 = int(scene.CommandRecorder_Variables.Instance_Index)
     if mode == "Up":
-        index2 = int(scene.CR_Var.Instance_Index) - 1
+        index2 = int(scene.CommandRecorder_Variables.Instance_Index) - 1
     else:
-        index2 = int(scene.CR_Var.Instance_Index) + 1
-    LengthTemp = len(CR_Prop.Instance_Name)
+        index2 = int(scene.CommandRecorder_Variables.Instance_Index) + 1
+    LengthTemp = len(CommandRecorder_Variables.Instance_Name)
     if (2 <= LengthTemp) and (0 <= index1 < LengthTemp) and (0 <= index2 < LengthTemp):
-        CR_Prop.Instance_Name[index1], CR_Prop.Instance_Name[index2] = (
-            CR_Prop.Instance_Name[index2],
-            CR_Prop.Instance_Name[index1],
+        (
+            CommandRecorder_Variables.Instance_Name[index1],
+            CommandRecorder_Variables.Instance_Name[index2],
+        ) = (
+            CommandRecorder_Variables.Instance_Name[index2],
+            CommandRecorder_Variables.Instance_Name[index1],
         )
-        CR_Prop.Instance_Command[index1], CR_Prop.Instance_Command[index2] = (
-            CR_Prop.Instance_Command[index2],
-            CR_Prop.Instance_Command[index1],
+        (
+            CommandRecorder_Variables.Instance_Command[index1],
+            CommandRecorder_Variables.Instance_Command[index2],
+        ) = (
+            CommandRecorder_Variables.Instance_Command[index2],
+            CommandRecorder_Variables.Instance_Command[index1],
         )
-        scene.CR_Var.Instance_Index = str(index2)
+        scene.CommandRecorder_Variables.Instance_Index = str(index2)
 
 
 class CR_OT_Instance(Operator):
@@ -620,13 +659,13 @@ class CR_OT_Instance(Operator):
             rename_instance()
         # インスタンスを実行
         else:
-            execute_instance(CR_Prop.Instance_Name.index(self.mode))
+            execute_instance(CommandRecorder_Variables.Instance_Name.index(self.mode))
 
         bpy.context.area.tag_redraw()
         return {"FINISHED"}  # UI系の関数の最後には必ず付ける
 
 
-def recent_switch(mode:str):
+def recent_switch(mode: str):
     if mode == "Standard":
         bpy.app.debug_wm = 0
     else:
@@ -660,16 +699,16 @@ class CR_PT_List(bpy.types.Panel):
         box = layout.box()
         box_row = box.row()
         box_row.label(text="", icon="SETTINGS")
-        if len(CR_("List", 0)):
-            box_row.prop(CR_("List", 0)[CR_("Index", 0)], "name", text="")
+        if len(get_list_command(0)):
+            box_row.prop(get_list_command(0)[get_list_index(0)], "name", text="")
         box_row = box.row()
         col = box_row.column()
         col.template_list(
             "CR_List_Selector",
             "",
-            scene.CR_Var,
+            scene.CommandRecorder_Variables,
             "List_Command_000",
-            scene.CR_Var,
+            scene.CommandRecorder_Variables,
             "List_Index_000",
             rows=4,
         )
@@ -679,12 +718,14 @@ class CR_PT_List(bpy.types.Panel):
         col.operator(CR_OT_Selector.bl_idname, text="", icon="TRIA_UP").mode = "Up"
         col.operator(CR_OT_Selector.bl_idname, text="", icon="TRIA_DOWN").mode = "Down"
         #
-        if len(CR_("List", 0)):
+        if len(get_list_command(0)):
             box_row = box.row()
             box_row.label(text="", icon="TEXT")
-            if len(CR_("List", CR_("Index", 0) + 1)):
+            if len(get_list_command(get_list_index(0) + 1)):
                 box_row.prop(
-                    CR_("List", CR_("Index", 0) + 1)[CR_("Index", CR_("Index", 0) + 1)],
+                    get_list_command(get_list_index(0) + 1)[
+                        get_list_index(get_list_index(0) + 1)
+                    ],
                     "name",
                     text="",
                 )
@@ -693,10 +734,10 @@ class CR_PT_List(bpy.types.Panel):
             col.template_list(
                 "CR_List_Command",
                 "",
-                scene.CR_Var,
-                "List_Command_{0:03d}".format(CR_("Index", 0) + 1),
-                scene.CR_Var,
-                "List_Index_{0:03d}".format(CR_("Index", 0) + 1),
+                scene.CommandRecorder_Variables,
+                "List_Command_{0:03d}".format(get_list_index(0) + 1),
+                scene.CommandRecorder_Variables,
+                "List_Index_{0:03d}".format(get_list_index(0) + 1),
                 rows=4,
             )
             col = box_row.column()
@@ -718,7 +759,7 @@ class CR_PT_List(bpy.types.Panel):
                 col.operator(
                     CR_OT_Command.bl_idname, text="", icon="TRIA_DOWN"
                 ).mode = "Down"
-            if len(CR_("List", CR_("Index", 0) + 1)):
+            if len(get_list_command(get_list_index(0) + 1)):
                 box.operator(Command_OT_Play.bl_idname, text="Play")
                 box.operator(
                     CR_OT_Instance.bl_idname, text="Recorder to Button"
@@ -728,15 +769,19 @@ class CR_PT_List(bpy.types.Panel):
         box.label(text="Options", icon="PRESET_NEW")
         # box_row = box.row()
         # box_row.label(text = 'Target')
-        # box_row.prop(scene.CR_Var, 'Target_Switch' ,expand = 1)
+        # box_row.prop(scene.CommandRecorder_Variables, 'Target_Switch' ,expand = 1)
         box_row = box.row()
         box_row.label(text="History")
-        box_row.prop(scene.CR_Var, "Recent_Switch", expand=1)
-        if not (CR_PT_List.Bool_Recent == scene.CR_Var.Recent_Switch):
-            recent_switch(scene.CR_Var.Recent_Switch)
+        box_row.prop(scene.CommandRecorder_Variables, "Recent_Switch", expand=1)
+        if not (
+            CR_PT_List.Bool_Recent == scene.CommandRecorder_Variables.Recent_Switch
+        ):
+            recent_switch(scene.CommandRecorder_Variables.Recent_Switch)
         box_row = box.row()
         box_row.label(text="Ignore Undo")
-        box_row.prop(scene.CR_Var, "IgnoreUndo", toggle=1, text="Ignore")
+        box_row.prop(
+            scene.CommandRecorder_Variables, "IgnoreUndo", toggle=1, text="Ignore"
+        )
 
 
 class CR_PT_Instance(bpy.types.Panel):
@@ -769,14 +814,15 @@ class CR_PT_Instance(bpy.types.Panel):
         ).mode = "Instance_to_Recorder"
         box_split = box.split(factor=0.2)
         box_col = box_split.column()
-        box_col.prop(scene.CR_Var, "Instance_Index", expand=1)
+        box_col.prop(scene.CommandRecorder_Variables, "Instance_Index", expand=1)
         box_col = box_split.column()
         box_col.scale_y = 0.9493
-        for Num_Loop in range(len(CR_Prop.Instance_Name)):
+        for Num_Loop in range(len(CommandRecorder_Variables.Instance_Name)):
             box_col.operator(
-                CR_OT_Instance.bl_idname, text=CR_Prop.Instance_Name[Num_Loop]
-            ).mode = CR_Prop.Instance_Name[Num_Loop]
-        if len(CR_Prop.Instance_Name):
+                CR_OT_Instance.bl_idname,
+                text=CommandRecorder_Variables.Instance_Name[Num_Loop],
+            ).mode = CommandRecorder_Variables.Instance_Name[Num_Loop]
+        if len(CommandRecorder_Variables.Instance_Name):
             box_row = box.row()
             box_row.operator(
                 CR_OT_Instance.bl_idname, text="", icon="REMOVE"
@@ -787,7 +833,7 @@ class CR_PT_Instance(bpy.types.Panel):
             box_row.operator(
                 CR_OT_Instance.bl_idname, text="", icon="TRIA_DOWN"
             ).mode = "I_Down"
-            box_row.prop(scene.CR_Var, "Rename", text="")
+            box_row.prop(scene.CommandRecorder_Variables, "Rename", text="")
             box_row.operator(CR_OT_Instance.bl_idname, text="Rename").mode = "Rename"
         box = layout.box()
         box.operator(CR_OT_Instance.bl_idname, text="Save to File").mode = "Save"
@@ -812,13 +858,13 @@ class CR_PT_Instance_IMAGE_EDITOR(CR_PT_Instance):
 
 def Num_Instance_Updater(self, context):
     items = []
-    for Num_Loop in range(len(CR_Prop.Instance_Name)):
-        items.append((str(Num_Loop), "{0}".format(Num_Loop + 1), ""))
+    for index in range(len(CommandRecorder_Variables.Instance_Name)):
+        items.append((str(index), "{0}".format(index + 1), ""))
     return items
 
 
-class CR_Prop(PropertyGroup):  # 何かとプロパティを収納
-    Rename: StringProperty()  # CR_Var.name
+class CommandRecorder_Variables(PropertyGroup):  # 何かとプロパティを収納
+    Rename: StringProperty()  # CommandRecorder_Variables.name
 
     Instance_Name = []
     Instance_Command = []
@@ -862,23 +908,35 @@ class CR_Prop(PropertyGroup):  # 何かとプロパティを収納
 # プロパティの宣言
 # -------------------------------------------------------------------------------------------
 def initialize_props():  # プロパティをセットする関数
-    bpy.types.Scene.CR_Var = bpy.props.PointerProperty(type=CR_Prop)
+    bpy.types.Scene.CommandRecorder_Variables = bpy.props.PointerProperty(
+        type=CommandRecorder_Variables
+    )
+
     if bpy.context.window_manager.keyconfigs.addon:
         km = bpy.context.window_manager.keyconfigs.addon.keymaps.new(
             name="Window", space_type="EMPTY"
         )  # Nullとして登録
-        CR_Prop.addon_keymaps.append(km)
-        for (idname, key, event, ctrl, alt, shift) in CR_Prop.key_assign_list:
+
+        CommandRecorder_Variables.addon_keymaps.append(km)
+
+        for (
+            idname,
+            key,
+            event,
+            ctrl,
+            alt,
+            shift,
+        ) in CommandRecorder_Variables.key_assign_list:
             kmi = km.keymap_items.new(
                 idname, key, event, ctrl=ctrl, alt=alt, shift=shift
             )  # ショートカットキーの登録
 
 
 def clear_props():
-    del bpy.types.Scene.CR_Var
-    for km in CR_Prop.addon_keymaps:
+    del bpy.types.Scene.CommandRecorder_Variables
+    for km in CommandRecorder_Variables.addon_keymaps:
         bpy.context.window_manager.keyconfigs.addon.keymaps.remove(km)
-    CR_Prop.addon_keymaps.clear()
+    CommandRecorder_Variables.addon_keymaps.clear()
 
 
 # ==============================================================
@@ -887,7 +945,7 @@ def clear_props():
 # 使用されているクラスを格納
 Class_List = [
     CR_OT_String,
-    CR_Prop,
+    CommandRecorder_Variables,
     CR_List_Selector,
     CR_OT_Selector,
     CR_OT_Selector_Up,
