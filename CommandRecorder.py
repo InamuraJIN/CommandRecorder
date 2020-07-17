@@ -38,7 +38,6 @@ class CR_OT_String(PropertyGroup):#リストデータを保持するためのプ
     default=''
     ) #CR_Var.name
 
-
 class CR_List_Selector(UIList):
     def draw_item(self, context, layout, data, item, icon, active_data,active_propname, index):
         layout.label(text = item.name)
@@ -60,7 +59,6 @@ def CR_(Data , Num):
         return eval('scene.CR_Var.List_Index_{0:03d}'.format(Num))
     else :
         exec('scene.CR_Var.List_Index_{0:03d} = {1}'.format(Num,Data))
-
 
 def Get_Recent(Return_Bool):#操作履歴にアクセス
     #remove other Recent Reports
@@ -105,13 +103,15 @@ def Record(Num, Mode):
                 Item.name = TempText[TempText.find('bpy'):]
 
 tpath = bpy.app.tempdir + "temp.json"
-FirstOpen = [True]
-tempcount = [0]
 
-def TempSave(Num):  # write new command to temp.json file
+def CreateTempFile():
     if not os.path.exists(tpath):
+        print(tpath)
         with open(tpath, 'w', encoding='utf8') as tempfile:
             json.dump({"0":[]}, tempfile)
+
+def TempSave(Num):  # write new command to temp.json file
+    CreateTempFile()
     with open(tpath, 'r+', encoding='utf8') as tempfile:   
         data = json.load(tempfile)
         data.update({str(Num):[]})
@@ -120,6 +120,7 @@ def TempSave(Num):  # write new command to temp.json file
         json.dump(data, tempfile)
 
 def TempUpdate(): # update all commands in temp.json file
+    CreateTempFile()
     with open(tpath, 'r+', encoding='utf8') as tempfile:
         tempfile.truncate(0)
         tempfile.seek(0)
@@ -129,6 +130,7 @@ def TempUpdate(): # update all commands in temp.json file
         json.dump(data, tempfile)
 
 def TempUpdateCommand(Key): # update one command in temp.json file
+    CreateTempFile()
     with open(tpath, 'r+', encoding='utf8') as tempfile:
         data = json.load(tempfile)
         data[str(Key)] = [i.name for i in CR_('List', int(Key))]
@@ -152,9 +154,6 @@ def TempLoad(dummy): # load commands after undo
             for j in range(len(data[keys[i]])):
                 Item = record.add()
                 Item.name = data[keys[i]][j]
-
-bpy.app.handlers.undo_post.append(TempLoad) # add TempLoad to ActionHandler and call ist after undo
-bpy.app.handlers.redo_post.append(TempLoad) # also for redo
 
 UndoRedoStack = []
 
@@ -185,8 +184,6 @@ def GetRedoStep(dummy):
             item.name = l[i][j]
     UndoRedoStack.pop()
 
-bpy.app.handlers.undo_pre.append(SaveUndoStep)
-bpy.app.handlers.redo_post.append(GetRedoStep)
 
 def Add(Num):
     Recent = Get_Recent('Reports_All')
@@ -283,7 +280,7 @@ def Play(Commands) :
         Set_Active = []
         if current_mode == 'OBJECT':
             Set_DeSelect = ("bpy.ops.object.select_all(action='DESELECT')")
-            for Target in bpy.context.selected_objects :
+            for Target in bpy.context.selected_objects:
                 Set_Select.append("bpy.data.objects['{0}'].select = True".format(Target.name))
                 Set_Active.append("bpy.context.scene.objects.active = bpy.data.objects['{0}']".format(Target.name))
         elif current_mode == 'EDIT_MESH':
@@ -436,117 +433,115 @@ class CR_OT_Command(Operator):
         bpy.context.area.tag_redraw()
         return{'FINISHED'}#UI系の関数の最後には必ず付ける
 
-def StrageFile():
-    Name_Folder = 'Storage'
-    Name_File   = 'CommandRecorder_Storage.txt'
-    Preset_Data = 'CommandRecorder_Storage_Preset.txt'
-    Addon_Directory = os.path.dirname(os.path.abspath(__file__))
-    Path = Addon_Directory
-    Path = os.path.join(Path, Name_Folder)
-    Path = os.path.join(Path, Name_File)
-    Destination  = os.path.normpath(Path) 
-    if os.path.exists(Destination):
-        return Destination
-    else:
-        Source = os.path.join(Addon_Directory, Preset_Data)
-        shutil.copyfile(Source, Destination)
-        if os.path.exists(Destination):
-            return Destination
-    raise ValueError('Destination Not Exists.')
-
 def Save():
-    scene = bpy.context.scene
-    File = open(StrageFile() , 'w')#書き込みモードでファイルを開く
-    Names = scene.CR_Var.Instance_Name
-    Commands = scene.CR_Var.Instance_Command
-    for Num_Loop in range(len(Names)):
-        File.write('CR_Name' + '\n' + Names[Num_Loop] + '\n')
-        File.write('CR_Command' + '\n')
-        for Command in Commands[Num_Loop]:
-            File.write(Command + '\n')
-        File.write('CR_End' + '\n\n')
-    File.close()#ファイルを閉じる
+    for savedfolder in os.listdir(path):
+        folderpath = path + "/" + savedfolder
+        for savedfile in os.listdir(folderpath):
+            os.remove(folderpath + "/" + savedfile)
+        os.rmdir(folderpath)
+    for cat in bpy.context.scene.cr_categories:
+        panelpath = path + "/" + cat.pn_name + f"–{GetPanelIndex(cat)}"
+        os.mkdir(panelpath)
+        for cmd_i in range(cat.Instance_Start, cat.Instance_Start + cat.Instance_length):
+            with open(panelpath + "/" + CR_Prop.Instance_Name[cmd_i] + f"–{cmd_i}", 'w') as cmd_file:
+                for cmd in CR_Prop.Instance_Command[cmd_i]:
+                    cmd_file.write(cmd + "\n")
 
 def Load():
+    print('------------------Load-----------------')
     scene = bpy.context.scene
-    File = open(StrageFile() , 'r')#読み込みモードでファイルを開く
-    List = []
-    for Line in File:
-        List.append(Line.replace('\n',''))
-    File.close()#ファイルを閉じる
+    scene.cr_categories.clear()
+    scene.cr_enum.clear() 
+    CR_Prop.Instance_Name.clear()
+    CR_Prop.Instance_Command.clear()
+    for folder in os.listdir(path):
+        folderpath = path + "/" + folder
+        if os.path.isdir(folderpath):
+            textfiles = os.listdir(folderpath)
+            new = scene.cr_categories.add()
+            name = folder.split('–')[0]
+            new.name = name
+            new.pn_name = name
+            new.pn_show = True
+            new.Instance_Start = len(CR_Prop.Instance_Name)
+            new.Instance_length = len(textfiles)
+            sortedtxt = [None] * len(textfiles)
+            for txt in textfiles:
+                sortedtxt[int(''.join(txt.split('.')[:-1]).split('–')[1])] = txt #remove the .txtending, join to string again, get the index
 
-    Bool_Command = 0
-    Temp_Command = []
-    Num_Count = 0
-    scene.CR_Var.Instance_Name.clear()
-    scene.CR_Var.Instance_Command.clear()
-    for Num_Loop in range(len(List)) :
-        if List[Num_Loop] == 'CR_Name' :
-            scene.CR_Var.Instance_Name.append(List[Num_Loop+1])
-        elif List[Num_Loop] == 'CR_Command' :
-            Bool_Command = 1
-        elif List[Num_Loop] == 'CR_End' :
-            Bool_Command = 0
-            scene.CR_Var.Instance_Command.append(Temp_Command)
-            Temp_Command = []
-            Num_Count += 1
-        if Bool_Command > 0:
-            if Bool_Command > 1 :
-                Temp_Command.append(List[Num_Loop])
-            Bool_Command += 1
+            for txt in sortedtxt:
+                blnew = scene.cr_enum.add()
+                CR_Prop.Instance_Name.append(txt.split('–')[0])
+                CmdList = []
+                with open(folderpath + "/" + txt, 'r') as text:
+                    for line in text.readlines():
+                        CmdList.append(line.strip())
+                CR_Prop.Instance_Command.append(CmdList)
+    if len(scene.cr_enum) != 0:
+        scene.cr_enum[0].Index = True
 
-
-def Recorder_to_Instance():
-    CR_Prop.Instance_Name.append(CR_('List',0)[CR_('Index',0)].name)
+def Recorder_to_Instance(panel):
+    i = panel.Instance_Start +  panel.Instance_length
+    CR_Prop.Instance_Name.insert(i, CR_('List',0)[CR_('Index',0)].name)
     Temp_Command = []
     for Command in CR_('List',CR_('Index',0)+1):
         Temp_Command.append(Command.name)
-    CR_Prop.Instance_Command.append(Temp_Command)
-
+    CR_Prop.Instance_Command.insert(i, Temp_Command)
+    panel.Instance_length += 1
+    bpy.context.scene.cr_enum.add()
+    p_i = GetPanelIndex(panel)
+    categories = bpy.context.scene.cr_categories
+    if p_i < len(categories):
+        for cat in categories[ p_i + 1: ]:
+            cat.Instance_Start += 1
 
 def Instance_to_Recorder():
     scene = bpy.context.scene
     Item = CR_('List' , 0 ).add()
-    Item.name = CR_Prop.Instance_Name[int(scene.CR_Var.Instance_Index)]
-    for Command in CR_Prop.Instance_Command[int(scene.CR_Var.Instance_Index)] :
+    Item.name = CR_Prop.Instance_Name[scene.CR_Var.Instance_Index]
+    for Command in CR_Prop.Instance_Command[scene.CR_Var.Instance_Index] :
         Item = CR_('List' , len(CR_('List',0)) ).add()
         Item.name = Command
     CR_( len(CR_('List',0))-1 , 0 )
 
-
 def Execute_Instance(Num):
     Play(CR_Prop.Instance_Command[Num])
 
-
 def Rename_Instance():
     scene = bpy.context.scene
-    CR_Prop.Instance_Name[int(scene.CR_Var.Instance_Index)] = scene.CR_Var.Rename
-
+    CR_Prop.Instance_Name[scene.CR_Var.Instance_Index] = scene.CR_Var.Rename
 
 def I_Remove():
     scene = bpy.context.scene
     if len(CR_Prop.Instance_Name) :
-        Index = int(scene.CR_Var.Instance_Index)
+        Index = scene.CR_Var.Instance_Index
         CR_Prop.Instance_Name.pop(Index)
         CR_Prop.Instance_Command.pop(Index)
+        scene.cr_enum.remove(Index)
+        categories = scene.cr_categories
+        for cat in categories:
+            if Index >= cat.Instance_Start and Index < cat.Instance_Start + cat.Instance_length:
+                cat.Instance_length -= 1
+                p_i = GetPanelIndex(cat)
+                if p_i < len(categories):
+                    for cat in categories[ p_i + 1: ]:
+                        cat.Instance_Start -= 1
+                break
         if len(CR_Prop.Instance_Name) and len(CR_Prop.Instance_Name)-1 < Index :
-            scene.CR_Var.Instance_Index = str(len(CR_Prop.Instance_Name)-1)
-
+            scene.CR_Var.Instance_Index = len(CR_Prop.Instance_Name)-1
 
 def I_Move(Mode):
     scene = bpy.context.scene
-    index1 = int(scene.CR_Var.Instance_Index)
+    index1 = scene.CR_Var.Instance_Index
     if Mode == 'Up' :
-        index2 = int(scene.CR_Var.Instance_Index) - 1
+        index2 = scene.CR_Var.Instance_Index - 1
     else :
-        index2 = int(scene.CR_Var.Instance_Index) + 1
+        index2 = scene.CR_Var.Instance_Index + 1
     LengthTemp = len(CR_Prop.Instance_Name)
     if (2 <= LengthTemp) and (0 <= index1 < LengthTemp) and (0 <= index2 <LengthTemp):
         CR_Prop.Instance_Name[index1] , CR_Prop.Instance_Name[index2] = CR_Prop.Instance_Name[index2] , CR_Prop.Instance_Name[index1]
         CR_Prop.Instance_Command[index1] , CR_Prop.Instance_Command[index2] = CR_Prop.Instance_Command[index2] , CR_Prop.Instance_Command[index1]
-        scene.CR_Var.Instance_Index = str(index2)
-
-
+        scene.cr_enum[index2].Index = True
 
 class CR_OT_Instance(Operator):
     bl_idname = 'cr_instance.button'#大文字禁止
@@ -574,9 +569,6 @@ class CR_OT_Instance(Operator):
         elif self.Mode == 'Load' :
             Load()
         #コマンドをインスタンスに
-        elif self.Mode == 'Recorder_to_Instance' :
-            Recorder_to_Instance()
-        #インスタンスをコマンドに
         elif self.Mode == 'Instance_to_Recorder' :
             Instance_to_Recorder()
         #削除
@@ -597,7 +589,6 @@ class CR_OT_Instance(Operator):
 
         bpy.context.area.tag_redraw()
         return{'FINISHED'}#UI系の関数の最後には必ず付ける
-
 
 def Recent_Switch(Mode):
     if Mode == 'Standard' :
@@ -662,7 +653,7 @@ class CR_PT_List(bpy.types.Panel):
                 col.operator(CR_OT_Command.bl_idname , text='' , icon='TRIA_DOWN' ).Mode = 'Down'
             if len(CR_('List',CR_('Index',0)+1)) :
                 box.operator(Command_OT_Play.bl_idname , text='Play' )
-                box.operator(CR_OT_Instance.bl_idname , text='Recorder to Button' ).Mode = 'Recorder_to_Instance'
+                box.operator(AddCategory.bl_idname , text='Recorder to Button' ).Mode = 'ToButton'
                 box.operator(CR_OT_Command.bl_idname , text='Clear').Mode = 'Clear'
         box = layout.box()
         box.label(text = 'Options', icon = 'PRESET_NEW')
@@ -685,7 +676,6 @@ class CR_PT_Instance(bpy.types.Panel):
     bl_label = 'CommandButton'# タイトル
     #変数の宣言
     #-------------------------------------------------------------------------------------------
-    StartUp = 0
     SelectedInctance = ''
     #レイアウト
     #-------------------------------------------------------------------------------------------
@@ -693,51 +683,200 @@ class CR_PT_Instance(bpy.types.Panel):
         self.layout.label(text = '', icon = 'PREFERENCES')
     #メニューの描画処理
     def draw(self, context):
-        if CR_PT_Instance.StartUp == 0:
-            Load()
-            CR_PT_Instance.StartUp = 1
         scene = bpy.context.scene
         #-------------------------------------------------------------------------------------------
         layout = self.layout
         #
-
         box = layout.box()
         box.operator(CR_OT_Instance.bl_idname , text='Button to Recorder' ).Mode = 'Instance_to_Recorder'
-        box_split = box.split(factor=0.2)
-        box_col = box_split.column()
-        box_col.prop(scene.CR_Var, 'Instance_Index' ,expand = 1)
-        box_col = box_split.column()
-        box_col.scale_y = 0.9493
-        for Num_Loop in range(len(CR_Prop.Instance_Name)) :
-            box_col.operator(CR_OT_Instance.bl_idname , text=CR_Prop.Instance_Name[Num_Loop]).Mode = CR_Prop.Instance_Name[Num_Loop]
-        if len(CR_Prop.Instance_Name) :
-            box_row = box.row()
-            box_row.operator(CR_OT_Instance.bl_idname , text='' , icon='REMOVE' ).Mode = 'I_Remove'
-            box_row.operator(CR_OT_Instance.bl_idname , text='' , icon='TRIA_UP' ).Mode = 'I_Up'
-            box_row.operator(CR_OT_Instance.bl_idname , text='' , icon='TRIA_DOWN' ).Mode = 'I_Down'
-            box_row.prop(scene.CR_Var , 'Rename' , text='')
-            box_row.operator(CR_OT_Instance.bl_idname , text='Rename').Mode = 'Rename'
-        box = layout.box()
         box.operator(CR_OT_Instance.bl_idname , text='Save to File' ).Mode = 'Save'
         box.operator(CR_OT_Instance.bl_idname , text='Load from File' ).Mode = 'Load'
+        if len(CR_Prop.Instance_Name) :
+            box_row = box.row()
+            row2 = box_row.row(align= True)
+            row2.operator(CR_OT_Instance.bl_idname , text='' , icon='REMOVE' ).Mode = 'I_Remove'
+            row2.operator(CR_OT_Instance.bl_idname , text='' , icon='TRIA_UP' ).Mode = 'I_Up'
+            row2.operator(CR_OT_Instance.bl_idname , text='' , icon='TRIA_DOWN' ).Mode = 'I_Down'
+            box_row.prop(scene.CR_Var , 'Rename' , text='')
+            box_row.operator(CR_OT_Instance.bl_idname , text='Rename').Mode = 'Rename'
+        row = box.row()
+        col = row.column()
+        col.label(text= 'Category')
+        col = row.column()
+        row2 = col.row(align= True)
+        row2.scale_x = 1.15
+        row2.operator(AddCategory.bl_idname, text= '', icon= 'ADD').Mode = 'Add'
+        row2.operator(AddCategory.bl_idname, text= '', icon= 'TRASH').Mode = 'Delet'
+        row2.operator(AddCategory.bl_idname, text= '', icon= 'GREASEPENCIL').Mode = 'Rename'
+        row2.operator(AddCategory.bl_idname, text= '', icon= 'PRESET').Mode = 'Move'
+        categories = scene.cr_categories
+        for cat in categories:
+            box = layout.box()
+            col = box.column()
+            row = col.row()
+            if cat.pn_show:
+                row.prop(cat, 'pn_show', icon="TRIA_DOWN", text= "", emboss= False)
+            else:
+                row.prop(cat, 'pn_show', icon="TRIA_RIGHT", text= "", emboss= False)
+            row.label(text= cat.pn_name)
+            i = GetPanelIndex(cat)
+            row2 = row.row(align= True)
+            row2.operator(AddCategory.bl_idname, icon="TRIA_UP", text= "").Mode = f'Move_Up-{i}'
+            row2.operator(AddCategory.bl_idname, icon="TRIA_DOWN", text="").Mode = f'Move_Down-{i}'
+            if cat.pn_show:
+                split = box.split(factor=0.2)
+                col = split.column(align= True)
+                for i in range(cat.Instance_Start, cat.Instance_Start + cat.Instance_length):
+                    col.prop(scene.cr_enum[i], 'Index' ,toggle = 1, text= str(i + 1))
+                col = split.column()
+                col.scale_y = 0.9493
+                for Num_Loop in range(cat.Instance_Start, cat.Instance_Start + cat.Instance_length):
+                    col.operator(CR_OT_Instance.bl_idname , text=CR_Prop.Instance_Name[Num_Loop]).Mode = CR_Prop.Instance_Name[Num_Loop]
 
+currentselected = [None]
+lastselected = [None]
+def UseRadioButtons(self, context):
+    categories = context.scene.cr_categories
+    for cat in categories:
+        if cat.pn_selected and lastselected[0] != cat and currentselected[0] != cat:
+            currentselected[0] = cat
+            if lastselected[0] is not None:
+                lastselected[0].pn_selected = False
+            lastselected[0] = cat
 
+class CategorizeProps(bpy.types.PropertyGroup):
+    pn_name : StringProperty()
+    pn_show : BoolProperty(default= True)
+    pn_selected : BoolProperty(default= False, update= UseRadioButtons)
+    Instance_Start : IntProperty(default= 0)
+    Instance_length : IntProperty(default= 0)
+
+path = os.path.dirname(__file__) + "/Storage"
+#Initalize Standert Button List
+@persistent
+def InitSavedPanel(dummy):
+    if not os.path.exists(path):
+        os.mkdir(path)
+    Load()
+
+def GetPanelIndex(cat):
+    return int(cat.path_from_id().split("[")[1].split("]")[0])
+
+class AddCategory(bpy.types.Operator):
+    bl_idname = "cr.add_category"
+    bl_label = "Category"
+
+    Mode : StringProperty()
+    PanelName : StringProperty(name = "Panel Name", default="")
+
+    def execute(self, context):
+        categories = context.scene.cr_categories
+        scene = context.scene
+        if self.Mode == 'Add':
+            new = scene.cr_categories.add()
+            new.name = self.PanelName
+            new.pn_name = self.PanelName
+            new.Instance_Start = len(CR_Prop.Instance_Name)
+            new.Instance_length = 0
+        elif self.Mode == 'Delet':
+            for cat in categories:
+                if cat.pn_selected:
+                    categories.remove(GetPanelIndex(cat))
+        elif self.Mode == 'Rename':
+            for cat in categories:
+                if cat.pn_selected:
+                    cat.name = self.PanelName
+                    cat.pn_name = self.PanelName
+        elif self.Mode == 'Move':
+            for cat in categories:
+                if cat.pn_selected:
+                    Index = scene.CR_Var.Instance_Index
+                    catendl = cat.Instance_Start + cat.Instance_length - 1
+                    for curcat in categories:
+                        if Index >= curcat.Instance_Start and Index < curcat.Instance_Start + curcat.Instance_length:
+                            curcat.Instance_length -= 1
+                            break
+                    CR_Prop.Instance_Name.insert(catendl, CR_Prop.Instance_Name.pop(Index))
+                    CR_Prop.Instance_Command.insert(catendl, CR_Prop.Instance_Command.pop(Index))
+                    cat.Instance_length += 1
+                    cat.Instance_Start -= 1
+                    scene.cr_enum[catendl].Index = True
+        elif self.Mode == 'ToButton':
+            for cat in categories:
+                if cat.pn_selected:
+                    Recorder_to_Instance(cat)
+        return {"FINISHED"}
+
+    def invoke(self, context, event):
+        m = self.Mode.split('-')[0]
+        categories = context.scene.cr_categories
+        if m == 'Move_Up':
+            i = int(self.Mode.split('-')[1])
+            if i - 1 >= 0:
+                categories[i].name, categories[i - 1].name = categories[i - 1].name, categories[i].name
+                categories[i].pn_name, categories[i - 1].pn_name = categories[i - 1].pn_name, categories[i].pn_name
+                categories[i].pn_show, categories[i - 1].pn_show = categories[i - 1].pn_show, categories[i].pn_show
+                categories[i].pn_selected, categories[i - 1].pn_selected = categories[i - 1].pn_selected, categories[i].pn_selected
+                categories[i].Instance_Start, categories[i - 1].Instance_Start = categories[i - 1].Instance_Start, categories[i].Instance_Start
+                categories[i].Instance_length, categories[i - 1].Instance_length = categories[i - 1].Instance_length, categories[i].Instance_length
+        elif m == 'Move_Down':
+            i = int(self.Mode.split('-')[1])
+            if i + 1 < len(categories):
+                categories[i].name, categories[i - 1].name = categories[i - 1].name, categories[i].name
+                categories[i].pn_name, categories[i - 1].pn_name = categories[i - 1].pn_name, categories[i].pn_name
+                categories[i].pn_show, categories[i - 1].pn_show = categories[i - 1].pn_show, categories[i].pn_show
+                categories[i].pn_selected, categories[i - 1].pn_selected = categories[i - 1].pn_selected, categories[i].pn_selected
+                categories[i].Instance_Start, categories[i - 1].Instance_Start = categories[i - 1].Instance_Start, categories[i].Instance_Start
+                categories[i].Instance_length, categories[i - 1].Instance_length = categories[i - 1].Instance_length, categories[i].Instance_length
+        else:
+            return context.window_manager.invoke_props_dialog(self)
+        return {"FINISHED"}
+
+    def draw(self, context):
+        layout = self.layout
+        categories = context.scene.cr_categories
+        if self.Mode == 'Add':
+            layout.prop(self, 'PanelName')
+        elif self.Mode == 'Delet':
+            for cat in categories:
+                layout.prop(cat, 'pn_selected', text= cat.pn_name)
+            layout.label(text='')
+        elif self.Mode == 'Rename':
+            for cat in categories:
+                layout.prop(cat, 'pn_selected', text= cat.pn_name)
+            layout.prop(self, 'PanelName')
+        elif self.Mode == 'Move':
+            for cat in categories:
+                layout.prop(cat, 'pn_selected', text= cat.pn_name)
+        elif self.Mode == 'ToButton':
+            for cat in categories:
+                layout.prop(cat, 'pn_selected', text= cat.pn_name)
 
 class CR_List_PT_VIEW_3D(CR_PT_List):
     bl_space_type = 'VIEW_3D'# メニューを表示するエリア
 class CR_PT_Instance_VIEW_3D(CR_PT_Instance):
     bl_space_type = 'VIEW_3D'# メニューを表示するエリア
+    bl_idname = 'command_list_view_3d'
 class CR_List_PT_IMAGE_EDITOR(CR_PT_List):
     bl_space_type = 'IMAGE_EDITOR'
 class CR_PT_Instance_IMAGE_EDITOR(CR_PT_Instance):
     bl_space_type = 'IMAGE_EDITOR'
+    bl_idname = 'command_list_image_editor'
 
+Icurrentselected = [None]
+Ilastselected = [None]
+def Instance_Updater(self, context):
+    enum = context.scene.cr_enum
+    for e in enum:
+        if e.Index and Ilastselected[0] != e and Icurrentselected[0] != e:
+            Icurrentselected[0] = e
+            if Ilastselected[0] is not None:
+                Ilastselected[0].Index = False
+            Ilastselected[0] = e
+            context.scene.CR_Var.Instance_Index = GetPanelIndex(e)
 
-def Num_Instance_Updater(self, context):
-     items = []
-     for Num_Loop in range(len(CR_Prop.Instance_Name)):
-        items.append((str(Num_Loop) , '{0}'.format(Num_Loop+1) , ''))
-     return items
+class CR_Enum(PropertyGroup):
+    Index : BoolProperty(default= False, update= Instance_Updater)
 
 class CR_Prop(PropertyGroup):#何かとプロパティを収納
     Rename : StringProperty(
@@ -746,9 +885,7 @@ class CR_Prop(PropertyGroup):#何かとプロパティを収納
     Instance_Name = []
     Instance_Command = []
 
-    Instance_Index : EnumProperty(
-    items = Num_Instance_Updater
-    )
+    Instance_Index : IntProperty(default= 0)
     #コマンド切り替え
     Target_Switch : EnumProperty(
     items = [
@@ -787,7 +924,15 @@ class CR_Prop(PropertyGroup):#何かとプロパティを収納
 #プロパティの宣言
 #-------------------------------------------------------------------------------------------
 def Initialize_Props():# プロパティをセットする関数
+    bpy.types.Scene.cr_categories = CollectionProperty(type= CategorizeProps)
     bpy.types.Scene.CR_Var = bpy.props.PointerProperty(type=CR_Prop)
+    bpy.types.Scene.cr_enum = CollectionProperty(type= CR_Enum)
+    bpy.app.handlers.load_factory_preferences_post.append(InitSavedPanel)
+    bpy.app.handlers.load_post.append(InitSavedPanel)
+    bpy.app.handlers.undo_pre.append(SaveUndoStep)
+    bpy.app.handlers.redo_post.append(GetRedoStep)
+    bpy.app.handlers.undo_post.append(TempLoad) # add TempLoad to ActionHandler and call ist after undo
+    bpy.app.handlers.redo_post.append(TempLoad) # also for redo
     if bpy.context.window_manager.keyconfigs.addon:
         km = bpy.context.window_manager.keyconfigs.addon.keymaps.new(name='Window', space_type='EMPTY')#Nullとして登録
         CR_Prop.addon_keymaps.append(km)
@@ -795,7 +940,15 @@ def Initialize_Props():# プロパティをセットする関数
             kmi = km.keymap_items.new(idname, key, event, ctrl=ctrl, alt=alt, shift=shift)# ショートカットキーの登録
 
 def Clear_Props():
+    del bpy.types.Scene.cr_categories
     del bpy.types.Scene.CR_Var
+    del bpy.types.Scene.cr_enum
+    bpy.app.handlers.load_factory_preferences_post.remove(InitSavedPanel)
+    bpy.app.handlers.load_post.remove(InitSavedPanel)
+    bpy.app.handlers.undo_pre.remove(SaveUndoStep)
+    bpy.app.handlers.redo_post.remove(GetRedoStep)
+    bpy.app.handlers.undo_post.remove(TempLoad)
+    bpy.app.handlers.redo_post.remove(TempLoad)
     for km in CR_Prop.addon_keymaps:
         bpy.context.window_manager.keyconfigs.addon.keymaps.remove(km)
     CR_Prop.addon_keymaps.clear()
@@ -824,4 +977,7 @@ CR_List_PT_VIEW_3D,
 CR_PT_Instance_VIEW_3D,
 CR_List_PT_IMAGE_EDITOR,
 CR_PT_Instance_IMAGE_EDITOR,
+CategorizeProps,
+AddCategory,
+CR_Enum
 ]
