@@ -7,12 +7,12 @@ from . import CommandRecorder as CommandRecorder
 from . import DefineCommon as Common
 
 #==============================================================
-# プラグインに関する情報
+# プラグインに関する情報    
 #==============================================================
 bl_info = {
 "name" : "CommandRecorder",# プラグイン名
 "author" : "BuuGraphic",# 作者
-"version": (2, 0, 3),# プラグインのバージョン
+"version": (3, 0, 10),# プラグインのバージョン
 "blender": (2, 80, 0),# プラグインが動作するBlenderのバージョン
 "location" : "View 3D",# Blender内部でのプラグインの位置づけ
 "description" : "Thank you for using our services",# プラグインの説明
@@ -22,7 +22,6 @@ bl_info = {
 'link': 'https://twitter.com/Sample_Mu03',
 "category" : "System"# プラグインのカテゴリ名
 }
-
 
 
 #==============================================================
@@ -64,8 +63,3 @@ def unregister():
         bpy.utils.unregister_class(Temp)
     CommandRecorder.Clear_Props()
     print("UnRegister")
-
-
-
-if __name__ == "__main__":
-    register()
