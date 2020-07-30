@@ -7,29 +7,28 @@ from . import CommandRecorder as CommandRecorder
 from . import DefineCommon as Common
 
 #==============================================================
-# プラグインに関する情報
+# プラグインに関する情報    
 #==============================================================
 bl_info = {
 "name" : "CommandRecorder",# プラグイン名
 "author" : "BuuGraphic",# 作者
-"version": (3, 0, 0),# プラグインのバージョン
+"version": (3, 1, 3),# プラグインのバージョン
 "blender": (2, 80, 0),# プラグインが動作するBlenderのバージョン
 "location" : "View 3D",# Blender内部でのプラグインの位置づけ
 "description" : "Thank you for using our services",# プラグインの説明
 "warning" : "",
-"wiki_url" : "https://twitter.com/Sample_Mu03",# プラグインの説明が存在するWikiページのURL
-"tracker_url" : "https://twitter.com/Sample_Mu03",# Blender Developer OrgのスレッドURL
-'link': 'https://twitter.com/Sample_Mu03',
+"wiki_url" : "https://github.com/InamuraJIN/CommandRecorder/blob/master/README.md",# Documentation
+"tracker_url" : "https://twitter.com/Inamura_JIN",# Report Bug
+'link': 'https://twitter.com/Inamura_JIN',
 "category" : "System"# プラグインのカテゴリ名
 }
-
 
 
 #==============================================================
 #レイアウト
 #-------------------------------------------------------------------------------------------
 # メニュー
-class Muthird_UI(bpy.types.Panel):
+class ComRec_UI(bpy.types.Panel):
     bl_space_type = 'VIEW_3D'# メニューを表示するエリア
     bl_region_type = 'TOOLS'# メニューを表示するリージョン
     bl_category = "CommandRecorder"# メニュータブのヘッダー名
@@ -50,7 +49,7 @@ class Muthird_UI(bpy.types.Panel):
 #==============================================================
 Class_List = [
 ]
-#Class_List.insert(0,Muthird_UI)
+#Class_List.insert(0,ComRec_UI)
 Class_List += CommandRecorder.Class_List
 
 def register():
@@ -64,8 +63,3 @@ def unregister():
         bpy.utils.unregister_class(Temp)
     CommandRecorder.Clear_Props()
     print("UnRegister")
-
-
-
-if __name__ == "__main__":
-    register()
