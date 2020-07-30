@@ -12,10 +12,13 @@ from . import DefineCommon as Common
 bl_info = {
 "name" : "CommandRecorder",# プラグイン名
 "author" : "BuuGraphic",# 作者
+<<<<<<< Updated upstream
 "version": (3, 0, 10),# プラグインのバージョン
+=======
+"version": (3, 1, 10),# プラグインのバージョン
+>>>>>>> Stashed changes
 "blender": (2, 80, 0),# プラグインが動作するBlenderのバージョン
 "location" : "View 3D",# Blender内部でのプラグインの位置づけ
-"description" : "Thank you for using our services",# プラグインの説明
 "warning" : "",
 "wiki_url" : "https://twitter.com/Sample_Mu03",# プラグインの説明が存在するWikiページのURL
 "tracker_url" : "https://twitter.com/Sample_Mu03",# Blender Developer OrgのスレッドURL
