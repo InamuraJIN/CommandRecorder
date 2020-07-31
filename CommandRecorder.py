@@ -512,6 +512,7 @@ class CR_OT_Instance(Operator):
     bl_idname = 'cr_instance.button'#大文字禁止
     bl_label = 'Button_Instance'#メニューに登録される名前
     #bl_options = {'REGISTER', 'UNDO'} # 処理の属性
+
     Mode : bpy.props.StringProperty(default='')
     def execute(self, context):
         #追加
@@ -554,12 +555,20 @@ class CR_OT_Instance(Operator):
         elif self.Mode == 'Rename' :
             Rename_Instance()
             TempSaveCats()
-        #インスタンスを実行
-        else :
-            Execute_Instance(int(self.Mode))
 
         bpy.context.area.tag_redraw()
         return{'FINISHED'}#UI系の関数の最後には必ず付ける
+
+class CR_OT_Cmd(Operator):
+    bl_idname = 'cr_instance.cmd_button'
+    bl_label = 'ComRec Command'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    Index : IntProperty()
+
+    def execute(self, context):
+        Execute_Instance(self.Index)
+        return{'FINISHED'}
         
 class CR_PT_Panel(bpy.types.Panel):
     bl_space_type = 'VIEW_3D'# メニューを表示するエリア
@@ -585,17 +594,17 @@ class CR_PT_Panel(bpy.types.Panel):
             box = layout.box()
             row = box.row(align= True)
             row.operator(CR_OT_Instance.bl_idname , text='Button to Recorder' ).Mode = 'Instance_to_Recorder'
-            row.prop(scene.CR_Var, 'ShowMenu', text= "", icon= 'COLLAPSEMENU')
+            row.prop(scene.CR_Var, 'HideMenu', text= "", icon= 'COLLAPSEMENU')
             col = box.column(align= True)
-            if scene.CR_Var.ShowMenu:
+            if scene.CR_Var.HideMenu:
+                col.operator(CR_OT_Instance.bl_idname , text='Save to File' ).Mode = 'Save'
+            else:
                 col.operator(CR_OT_Instance.bl_idname , text='Save to File' ).Mode = 'Save'
                 col.operator(CR_OT_Instance.bl_idname , text='Load from File' ).Mode = 'Load'
                 col.operator(AddCategory.bl_idname, text= "Add from File").Mode = 'AddFromFile'
                 col = box.column(align= True)
                 col.operator(ImportButton.bl_idname, text= 'Import')
                 col.operator(ExportButton.bl_idname, text= 'Export')
-            else:
-                col.operator(CR_OT_Instance.bl_idname , text='Save to File' ).Mode = 'Save'
             row = box.row().split(factor= 0.4)
             row.label(text= 'Category')
             row2 = row.row(align= True)
@@ -637,7 +646,7 @@ class CR_PT_Panel(bpy.types.Panel):
                     col = split.column()
                     col.scale_y = 0.9493
                     for Num_Loop in range(cat.Instance_Start, cat.Instance_Start + cat.Instance_length):
-                        col.operator(CR_OT_Instance.bl_idname , text=CR_Prop.Instance_Name[Num_Loop]).Mode = str(Num_Loop)
+                        col.operator(CR_OT_Cmd.bl_idname , text=CR_Prop.Instance_Name[Num_Loop]).Index = Num_Loop
         else:
             #Record----------------------------------------------
             box = layout.box()
@@ -1250,10 +1259,10 @@ class CR_Prop(PropertyGroup):#何かとプロパティを収納
     FileDisp_Command = []
     FileDisp_Index : IntProperty(default= 0)
 
-    IgnoreUndo : BoolProperty(default=True, description="all records and changes are unaffected by undo")
+    IgnoreUndo : BoolProperty(default=True, description="all records and changes are unaffected by undo", name= "Ignore Undo")
     PanelType : EnumProperty(items= [("button","Button",""),("record","Record","")], default= "record")
-    ShowMenu : BoolProperty(description= "shows an extra menu with import/export options")
-    ShowMacros : BoolProperty(description= "shows an extra menu with the macros", default= True)
+    HideMenu : BoolProperty(description= "shows an extra menu with import/export options", name= "Hide Menu")
+    ShowMacros : BoolProperty(description= "shows an extra menu with the macros", default= True, name= "Show Macros")
 
     Temp_Command = []
     Temp_Num = 0
@@ -1345,6 +1354,7 @@ CR_Enum,
 CategorizeFileDisp,
 CR_FileDisp,
 ImportButton,
-ExportButton
+ExportButton,
+CR_OT_Cmd
 ]
 
